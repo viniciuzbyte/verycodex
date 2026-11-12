@@ -22,33 +22,53 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Locate project root and set working-directory
+        id: locate
+        run: |
+          if [ -f "settings.gradle.kts" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f "verycode/settings.gradle.kts" ]; then
+            echo "dir=verycode" >> "$GITHUB_OUTPUT"
+          else
+            found=$(find . -maxdepth 3 -name "settings.gradle.kts" | head -n1)
+            if [ -z "$found" ]; then
+              echo "::error::settings.gradle.kts not found anywhere up to 3 levels deep."
+              exit 1
+            fi
+            echo "dir=$(dirname "$found")" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Generate Gradle wrapper
+        working-directory: ${{ steps.locate.outputs.dir }}
         run: gradle wrapper --gradle-version 8.7 --no-daemon
 
       - name: Grant execute permission
+        working-directory: ${{ steps.locate.outputs.dir }}
         run: chmod +x ./gradlew
 
       - name: Build debug APK
+        working-directory: ${{ steps.locate.outputs.dir }}
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Build release APK (unsigned)
+        working-directory: ${{ steps.locate.outputs.dir }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: verycode-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ steps.locate.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: verycode-release-unsigned-apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: ${{ steps.locate.outputs.dir }}/app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
 
       - name: Create GitHub Release on tag
@@ -56,7 +76,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            ${{ steps.locate.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
+            ${{ steps.locate.outputs.dir }}/app/build/outputs/apk/release/app-release-unsigned.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
